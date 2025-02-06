@@ -18,18 +18,22 @@ async function seedDatabase(reset = false) {
         { name: "Jane Doe", email: "jane@example.com", password: "password", favorites: ["QuickBuy", "Supermart"] }
     ];
 
-    // Stores Collection
+    // Stores Collection with Categories
     const stores = [
-        { name: "Supermart", location: "Downtown", isFavorite: true },
-        { name: "QuickBuy", location: "Suburb", isFavorite: false },
-        { name: "GroceryLand", location: "Mall", isFavorite: false }
+        { name: "Supermart", location: "Downtown", isFavorite: true, category: "Groceries" },
+        { name: "QuickBuy", location: "Suburb", isFavorite: false, category: "Technology" },
+        { name: "GroceryLand", location: "Mall", isFavorite: false, category: "Groceries" },
+        { name: "TechHub", location: "City Center", isFavorite: true, category: "Technology" },
+        { name: "HealthMart", location: "Uptown", isFavorite: false, category: "Health" }
     ];
 
     // Flyers Collection (now includes images, dates, and items)
     const flyers = [
         { store: "Supermart", title: "Supermart Deals", isNew: true, isSaved: false, imageUrl: "https://example.com/supermart.jpg", date: "2024-02-04", items: ["Milk", "Bread", "Apples"] },
         { store: "QuickBuy", title: "Weekly Discounts", isNew: false, isSaved: true, imageUrl: "https://example.com/quickbuy.jpg", date: "2024-02-01", items: ["Cheese", "Tomatoes"] },
-        { store: "GroceryLand", title: "Fresh Market", isNew: true, isSaved: false, imageUrl: "https://example.com/groceryland.jpg", date: "2024-02-03", items: ["Carrots", "Oranges", "Chicken"] }
+        { store: "GroceryLand", title: "Fresh Market", isNew: true, isSaved: false, imageUrl: "https://example.com/groceryland.jpg", date: "2024-02-03", items: ["Carrots", "Oranges", "Chicken"] },
+        { store: "TechHub", title: "Tech Deals", isNew: true, isSaved: false, imageUrl: "https://example.com/techhub.jpg", date: "2024-02-05", items: ["Laptop", "Phone", "Headphones"] },
+        { store: "HealthMart", title: "Health Mart Promotions", isNew: false, isSaved: true, imageUrl: "https://example.com/healthmart.jpg", date: "2024-02-02", items: ["Vitamins", "Supplements", "Protein"] }
     ];
 
     // Shopping List Collection (linked to users)

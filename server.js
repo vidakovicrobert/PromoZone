@@ -64,6 +64,23 @@ app.get('/stores', async (req, res) => {
     }
 });
 
+// Stores - Fetch by Category
+app.get('/stores/category/:category', async (req, res) => {
+    try {
+        let category = req.params.category;
+        let stores_collection = db.collection('stores');
+        let categorizedStores = await stores_collection.find({ category: category }).toArray();
+        
+        if (categorizedStores.length === 0) {
+            return res.status(404).json({ message: 'No stores found for this category' });
+        }
+
+        res.status(200).json(categorizedStores);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch stores by category' });
+    }
+});
+
 // Stores - Fetch Favorite Stores
 app.get('/stores/favorites', async (req, res) => {
     try {
@@ -147,7 +164,7 @@ app.get('/settings', (req, res) => {
 });
 
 // Start Server
-const PORT = 3000;
+const PORT = 4000;
 app.listen(PORT, error => {
     if (error) {
         console.log('Error starting server:', error);
