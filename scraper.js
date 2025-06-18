@@ -258,6 +258,59 @@ async function scrapeLidl(db, browser) {
   }
 }
 
+// Scrape Eurospin leaflets
+// Scrape Eurospin leaflets by code‐param
+async function scrapeEurospin(db, browser) {
+  // 1) This is the PDF‐serving URL
+  const flyerUrl = 'https://www.eurospin.hr/katalog/promotion?code=P162025HR';
+  console.log('Processing Eurospin flyer:', flyerUrl);
+
+  // 2) Pull out the `code=` part
+  const codeParam = new URL(flyerUrl).searchParams.get('code') || '';
+  //    codeParam === 'P162025HR'
+
+  // 3) Extract page/month/year from it
+  //    P1 → page 1 (we ignore), 6 → June, 2025 → year
+  const m = codeParam.match(/^P\d+(\d{1,2})(\d{4})HR$/i);
+  let validFrom, validTo;
+  const now = new Date();
+
+  if (m) {
+    const month = parseInt(m[1], 10);
+    const year  = parseInt(m[2], 10);
+
+    // per your note: “valid from the 20th”
+    validFrom = new Date(Date.UTC(year, month - 1, 20));
+    validTo   = new Date(Date.UTC(year, month - 1, 20 + 7));
+  } else {
+    // fallback to a 7-day window starting today
+    validFrom = new Date();
+    validFrom.setUTCHours(0, 0, 0, 0);
+    validTo   = new Date(validFrom.getTime() + 7 * 24*60*60*1000);
+  }
+
+  // 4) Upsert into Mongo just like the others
+  const leaflets = db.collection('leaflets');
+  try {
+    await leaflets.updateOne(
+      { url: flyerUrl },
+      {
+        $set: {
+          url:        flyerUrl,
+          validFrom,
+          validTo,
+          chain:     'Eurospin',
+          scrapedAt: now
+        }
+      },
+      { upsert: true }
+    );
+    console.log('Upserted Eurospin leaflet:', flyerUrl);
+  } catch (err) {
+    console.error('Error upserting Eurospin leaflet', flyerUrl, err);
+  }
+}
+
 
 // Main execution
 async function main() {
@@ -267,7 +320,7 @@ async function main() {
   // wipe all existing leaflet docs
   await db.collection('leaflets').deleteMany({});
   console.log('Cleared leaflets collection.');
-  
+
   // Optionally drop legacy index once
   try {
     await db.collection('leaflets').dropIndex('store_1_validFrom_1');
@@ -278,9 +331,10 @@ async function main() {
 
   const browser = await puppeteer.launch({ headless: true });
   try {
-    await scrapeSparInterspar(db, browser);
-    await scrapeDm(db, browser);
-    await scrapeLidl(db, browser);
+    //await scrapeSparInterspar(db, browser);
+    //await scrapeDm(db, browser);
+    //await scrapeLidl(db, browser);
+    await scrapeEurospin(db, browser);
   } catch (err) {
     console.error('Scraper error:', err);
   } finally {
