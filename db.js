@@ -1,21 +1,26 @@
+// db.js
 import { MongoClient } from 'mongodb';
 import { config } from 'dotenv';
 
-config(); // učitava osjetljive podatke iz .env datoteke
+config(); // load MONGO_URI, DB_NAME from .env
 
-const mongoURI = process.env.MONGO_URI;
-const db_name = process.env.DB_NAME;
+const uri     = process.env.MONGO_URI;
+const dbName  = process.env.DB_NAME;
 
-async function connectToDatabase() {
-    try {
-        const client = new MongoClient(mongoURI); // stvaramo novi klijent
-        await client.connect(); // spajamo se na klijent
-        console.log('Uspješno spajanje na bazu podataka');
-        let db = client.db(db_name); // odabiremo bazu podataka
-        return db;
-    } catch (error) {
-        console.error('Greška prilikom spajanja na bazu podataka', error);
-        throw error;
-    }
+let cachedClient = null;
+let cachedDb     = null;
+
+export async function connectToDatabase() {
+  if (cachedClient && cachedDb) {
+    return { client: cachedClient, db: cachedDb };
+  }
+
+  const client = new MongoClient(uri, { /* your options */ });
+  await client.connect();
+  console.log('Uspješno spajanje na bazu podataka');
+
+  const db = client.db(dbName);
+  cachedClient = client;
+  cachedDb     = db;
+  return { client, db };
 }
-export { connectToDatabase };
