@@ -6,12 +6,14 @@ import puppeteer from 'puppeteer';
 import * as cheerio from 'cheerio';
 import { connectToDatabase } from './db.js';
 
-// Utility: parse date from SPAR URL segment like '250625'
+// Parse YYMMDD → UTC date at midnight
 function parseDateFromSegment(seg) {
-  const day = parseInt(seg.slice(0, 2), 10);
-  const month = parseInt(seg.slice(2, 4), 10) - 1;
-  const year = 2000 + parseInt(seg.slice(4, 6), 10);
-  return new Date(year, month, day);
+const year  = 2000 + parseInt(seg.slice(0, 2), 10);
+const month = parseInt(seg.slice(2, 4), 10) - 1;
+const day   = parseInt(seg.slice(4, 6), 10);
+
+// Use Date.UTC so it's stored as 2025-06-16T00:00:00.000Z
+return new Date(Date.UTC(year, month, day));
 }
 
 // Fetch page HTML via Puppeteer
@@ -135,19 +137,28 @@ async function scrapeDm(db, browser) {
   }
 
   // 3) Parse date range from URL, e.g. "..._16_6-30_6_2025-web"
+  //    Captures: [ full, d1, M1, d2, M2, YYYY ]
   const dateRegex = /_(\d{1,2})_(\d{1,2})-(\d{1,2})_(\d{1,2})_(\d{4})-web$/;
   const m = flyerUrl.match(dateRegex);
+
   const now = new Date();
   let validFrom, validTo;
 
   if (m) {
-    const [ , d1, M1, d2, M2, YYYY ] = m.map((v,i) => i>0 ? parseInt(v,10) : v);
-    validFrom = new Date(YYYY, M1 - 1, d1);
-    validTo   = new Date(YYYY, M2 - 1, d2);
+    const d1  = parseInt(m[1], 10);
+    const M1  = parseInt(m[2], 10) - 1;
+    const d2  = parseInt(m[3], 10);
+    const M2  = parseInt(m[4], 10) - 1;
+    const YY  = parseInt(m[5], 10);
+
+    // create at UTC midnight so no timezone shift
+    validFrom = new Date(Date.UTC(YY, M1, d1));
+    validTo   = new Date(Date.UTC(YY, M2, d2));
   } else {
-    // fallback to a 7-day span
-    validFrom = now;
-    validTo   = new Date(now.getTime() + 7*24*60*60*1000);
+    // fallback to a 7-day span at UTC midnight
+    validFrom = new Date();
+    validFrom.setUTCHours(0,0,0,0);
+    validTo   = new Date(validFrom.getTime() + 7*24*60*60*1000);
   }
 
   // 4) Upsert into Mongo like SPAR/Interspar
@@ -171,6 +182,7 @@ async function scrapeDm(db, browser) {
     console.error('Error upserting DM leaflet', flyerUrl, err);
   }
 }
+
 
 // Scrape Lidl leaflets (one doc per flyer URL)
 async function scrapeLidl(db, browser) {
@@ -208,8 +220,21 @@ async function scrapeLidl(db, browser) {
     let validTo = new Date(now);
     if (m) {
       const year = new Date().getFullYear();
-      validFrom = new Date(year, parseInt(m[2], 10) - 1, parseInt(m[1], 10));
-      validTo   = new Date(year, parseInt(m[4], 10) - 1, parseInt(m[3], 10));
+       // create at UTC midnight so no off-by-one on storage
+    validFrom = new Date(
+        Date.UTC(
+            year,
+            parseInt(m[2], 10) - 1,
+            parseInt(m[1], 10)
+    )
+    );
+    
+    validTo = new Date(
+        Date.UTC(
+            year,
+            parseInt(m[4], 10) - 1,
+            parseInt(m[3], 10)
+    ));
     }
 
     try {
@@ -237,10 +262,12 @@ async function scrapeLidl(db, browser) {
 // Main execution
 async function main() {
   const { db, client } = await connectToDatabase();
-
-  // 💥 wipe all existing leaflet docs
+  
+  // testing only
+  // wipe all existing leaflet docs
   await db.collection('leaflets').deleteMany({});
   console.log('Cleared leaflets collection.');
+  
   // Optionally drop legacy index once
   try {
     await db.collection('leaflets').dropIndex('store_1_validFrom_1');
