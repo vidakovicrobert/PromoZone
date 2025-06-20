@@ -2,8 +2,11 @@
 // Express backend for PromoZone, integrating centralized DB connection and prototype seeder
 
 import express from 'express';
+import { body, validationResult } from 'express-validator';
 import { ObjectId } from 'mongodb';
 import { connectToDatabase } from './db.js';
+import cors from 'cors';
+import bcrypt from 'bcrypt';
 //import './seed.js'; // Run seed script on startup
 
 async function startServer() {
@@ -11,6 +14,18 @@ async function startServer() {
   const { db, client } = await connectToDatabase();
 
   const app = express();
+  const SALT_ROUNDS = 10;
+
+   // 1) Allow simple+preflight CORS for your front-end origin:
+  app.use(cors({
+    origin: 'http://localhost:3000',   // where your Vue app runs
+    methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+    allowedHeaders: ['Content-Type','Authorization']
+  }));
+  // 2) Explicitly handle pre-flights for all routes:
+  app.options('*', cors());
+
+  // 3) Then JSON parsing
   app.use(express.json());
 
   // Home Route
@@ -29,30 +44,82 @@ async function startServer() {
   });
 
   // Authentication Routes (Register & Login)
-  app.post('/register', async (req, res) => {
-    try {
-      const { name, email, password } = req.body;
-      const usersCollection = db.collection('users');
-      const existing = await usersCollection.findOne({ email });
-      if (existing) return res.status(400).json({ error: 'User already exists' });
-      await usersCollection.insertOne({ name, email, password });
-      res.status(201).json({ message: 'User registered successfully' });
-    } catch (err) {
-      res.status(500).json({ error: 'Registration failed' });
-    }
-  });
+  // REGISTER route with validation
+  app.post('/register', [
+  // your express-validator checks here…
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(422).json({ errors: errors.array() });
+  }
 
-  app.post('/login', async (req, res) => {
-    try {
-      const { email, password } = req.body;
-      const usersCollection = db.collection('users');
-      const user = await usersCollection.findOne({ email, password });
-      if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-      res.status(200).json({ message: 'Login successful' });
-    } catch (err) {
-      res.status(500).json({ error: 'Login failed' });
+  const { name, email, password } = req.body;
+  const users = db.collection('users');
+
+  if (await users.findOne({ email })) {
+    return res.status(400).json({ error: 'User already exists' });
+  }
+
+  // 1) Hash the password
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+  // 2) Build the full document
+  const newUser = {
+    name,
+    email,
+    passwordHash,
+    createdAt: new Date()
+  };
+
+  // 3) Insert with all required fields
+  const result = await users.insertOne(newUser);
+
+  res.status(201).json({
+    message: 'User registered successfully',
+    user: {
+      _id: result.insertedId,
+      name,
+      email,
+      createdAt: newUser.createdAt
     }
   });
+});
+
+
+  // LOGIN route with validation
+  app.post('/login', [
+  body('email').isEmail().withMessage('Must be a valid email'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(422).json({ errors: errors.array() });
+  }
+
+  const { email, password } = req.body;
+  const users = db.collection('users');
+  const user = await users.findOne({ email });
+
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  // Compare against stored hash
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  res.status(200).json({
+    message: 'Login successful',
+    user: {
+      _id: user._id,
+      name: user.name,
+      email: user.email
+    }
+  });
+});
+
 
   // Stores - Fetch All
   app.get('/stores', async (req, res) => {
@@ -150,8 +217,6 @@ async function startServer() {
     if (err) console.error('Server start error:', err);
     else console.log(`Server is running at http://localhost:${PORT}`);
   });
-
-  // Graceful shutdown
   process.on('SIGINT', async () => {
     console.log('Shutting down server...');
     await client.close();
