@@ -7,28 +7,115 @@ import { ObjectId } from 'mongodb';
 import { connectToDatabase } from './db.js';
 import cors from 'cors';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
 //import './seed.js'; // Run seed script on startup
 
 async function startServer() {
   // Establish MongoDB connection
   const { db, client } = await connectToDatabase();
+  
+  dotenv.config();
+  if (!process.env.JWT_SECRET) {
+    console.error('⚠️  Missing JWT_SECRET in environment!');
+    process.exit(1);
+  }
 
+  
   const app = express();
   const SALT_ROUNDS = 10;
+  const JWT_SECRET    = process.env.JWT_SECRET;
+  const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 
-   // 1) Allow simple+preflight CORS for your front-end origin:
-  app.use(cors({
-    origin: 'http://localhost:3000',   // where your Vue app runs
-    methods: ['GET','POST','PUT','DELETE','OPTIONS'],
-    allowedHeaders: ['Content-Type','Authorization']
-  }));
-  // 2) Explicitly handle pre-flights for all routes:
+  console.log('Using JWT secret:', JWT_SECRET);
+
+  // CORS & JSON
+  app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
   app.options('*', cors());
-
-  // 3) Then JSON parsing
   app.use(express.json());
 
-  // Home Route
+  // Issue token helper
+  function signToken(payload) {
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  }
+
+  // Auth middleware
+  function requireAuth(req, res, next) {
+    const auth = req.headers.authorization;
+    if (!auth?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing token' });
+    }
+    const token = auth.slice(7);
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+      next();
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+  }
+
+  // REGISTER
+  app.post('/register', [
+    body('name').trim().notEmpty().withMessage('Name is required'),
+    body('email').isEmail().withMessage('Must be a valid email'),
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 chars')
+  ], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(422).json({ errors: errors.array() });
+    }
+
+    const { name, email, password } = req.body;
+    const users = db.collection('users');
+    if (await users.findOne({ email })) {
+      return res.status(400).json({ error: 'User already exists' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    const createdAt    = new Date();
+    const result       = await users.insertOne({ name, email, passwordHash, createdAt });
+
+    const user = { _id: result.insertedId, name, email };
+    const token = signToken(user);
+
+    res.status(201).json({ message: 'Registered', user, token });
+  });
+
+  // LOGIN
+  app.post('/login', [
+    body('email').isEmail().withMessage('Must be a valid email'),
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 chars')
+  ], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(422).json({ errors: errors.array() });
+    }
+
+    const { email, password } = req.body;
+    const users = db.collection('users');
+    const userDoc = await users.findOne({ email });
+    if (!userDoc) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const valid = await bcrypt.compare(password, userDoc.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const user = { _id: userDoc._id, name: userDoc.name, email: userDoc.email };
+    const token = signToken(user);
+
+    res.json({ message: 'Logged in', user, token });
+  });
+
+  // Example protected route
+  app.get('/me', requireAuth, async (req, res) => {
+    // req.user comes from the token payload
+    res.json({ user: req.user });
+  });
+
+// Home Route
   app.get('/', (req, res) => {
     res.send('PromoZone Backend is running');
   });
@@ -42,83 +129,6 @@ async function startServer() {
       res.status(500).json({ error: 'Failed to fetch users' });
     }
   });
-
-  // Authentication Routes (Register & Login)
-  // REGISTER route with validation
-  app.post('/register', [
-  // your express-validator checks here…
-], async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(422).json({ errors: errors.array() });
-  }
-
-  const { name, email, password } = req.body;
-  const users = db.collection('users');
-
-  if (await users.findOne({ email })) {
-    return res.status(400).json({ error: 'User already exists' });
-  }
-
-  // 1) Hash the password
-  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-
-  // 2) Build the full document
-  const newUser = {
-    name,
-    email,
-    passwordHash,
-    createdAt: new Date()
-  };
-
-  // 3) Insert with all required fields
-  const result = await users.insertOne(newUser);
-
-  res.status(201).json({
-    message: 'User registered successfully',
-    user: {
-      _id: result.insertedId,
-      name,
-      email,
-      createdAt: newUser.createdAt
-    }
-  });
-});
-
-
-  // LOGIN route with validation
-  app.post('/login', [
-  body('email').isEmail().withMessage('Must be a valid email'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
-], async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(422).json({ errors: errors.array() });
-  }
-
-  const { email, password } = req.body;
-  const users = db.collection('users');
-  const user = await users.findOne({ email });
-
-  if (!user) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
-  // Compare against stored hash
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
-  res.status(200).json({
-    message: 'Login successful',
-    user: {
-      _id: user._id,
-      name: user.name,
-      email: user.email
-    }
-  });
-});
 
 
   // Stores - Fetch All
