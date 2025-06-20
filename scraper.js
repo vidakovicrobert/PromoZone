@@ -1,5 +1,5 @@
 // scraper.js
-// Prototype scraper for SPAR, DM and now Lidl leaflets 
+// Prototype scraper for SPAR, DM and now Lidl flyers 
 // Node.js + puppeteer + cheerio + MongoDB native driver
 
 import puppeteer from 'puppeteer';
@@ -29,7 +29,7 @@ async function fetchPageHtml(url, browser) {
   return html;
 }
 
-// Scrape SPAR leaflets
+// Scrape SPAR flyers
 async function scrapeSparInterspar(db, browser) {
   const baseUrl = 'https://www.spar.hr/letci-i-katalozi/';
   console.log('Fetching SPAR/Interspar main page…');
@@ -44,7 +44,7 @@ async function scrapeSparInterspar(db, browser) {
   const $ = cheerio.load(html);
   const links = new Set();
 
-  // grab all links to SPAR/Interspar leaflets/katalogi
+  // grab all links to SPAR/Interspar flyers/katalogi
   $('a[href*="aktualni-letci-"], a[href*="aktualni-katalozi-"]').each((_, el) => {
     let href = $(el).attr('href');
     if (!href) return;
@@ -61,7 +61,7 @@ async function scrapeSparInterspar(db, browser) {
   });
 
   console.log(`Found ${links.size} SPAR/Interspar leaflet URLs`);
-  const leaflets = db.collection('leaflets');
+  const flyers = db.collection('flyers');
   const now      = new Date();
 
   for (const url of links) {
@@ -79,7 +79,7 @@ async function scrapeSparInterspar(db, browser) {
     const chain = url.includes('interspar') ? 'Interspar' : 'SPAR';
 
     try {
-      await leaflets.updateOne(
+      await flyers.updateOne(
         { url },
         {
           $set: {
@@ -99,8 +99,8 @@ async function scrapeSparInterspar(db, browser) {
   }
 }
 
-// Scrape DM leaflets
-// Scrape DM leaflets by waiting for the katalog.dm.hr link in the live page
+// Scrape DM flyers
+// Scrape DM flyers by waiting for the katalog.dm.hr link in the live page
 async function scrapeDm(db, browser) {
   const dmUrl = 'https://www.dm.hr/dm-katalog-470900';
   console.log('Loading DM katalog page…');
@@ -162,9 +162,9 @@ async function scrapeDm(db, browser) {
   }
 
   // 4) Upsert into Mongo like SPAR/Interspar
-  const leaflets = db.collection('leaflets');
+  const flyers = db.collection('flyers');
   try {
-    await leaflets.updateOne(
+    await flyers.updateOne(
       { url: flyerUrl },
       {
         $set: {
@@ -184,7 +184,7 @@ async function scrapeDm(db, browser) {
 }
 
 
-// Scrape Lidl leaflets (one doc per flyer URL)
+// Scrape Lidl flyers (one doc per flyer URL)
 async function scrapeLidl(db, browser) {
   const base = 'https://www.lidl.hr/c/online-katalog/s10027538';
   console.log('Fetching Lidl online katalog page via Puppeteer...');
@@ -208,7 +208,7 @@ async function scrapeLidl(db, browser) {
   });
 
   console.log(`Found ${links.size} Lidl flyer URLs`);
-  const leaflets = db.collection('leaflets');
+  const flyers = db.collection('flyers');
   const now = new Date();
 
   for (const url of links) {
@@ -238,7 +238,7 @@ async function scrapeLidl(db, browser) {
     }
 
     try {
-      await leaflets.updateOne(
+      await flyers.updateOne(
         { url },
         {
           $set: {
@@ -258,8 +258,8 @@ async function scrapeLidl(db, browser) {
   }
 }
 
-// Scrape Eurospin leaflets
-// Scrape Eurospin leaflets by code‐param
+// Scrape Eurospin flyers
+// Scrape Eurospin flyers by code‐param
 async function scrapeEurospin(db, browser) {
   // 1) This is the PDF‐serving URL
   const flyerUrl = 'https://www.eurospin.hr/katalog/promotion?code=P162025HR';
@@ -290,9 +290,9 @@ async function scrapeEurospin(db, browser) {
   }
 
   // 4) Upsert into Mongo just like the others
-  const leaflets = db.collection('leaflets');
+  const flyers = db.collection('flyers');
   try {
-    await leaflets.updateOne(
+    await flyers.updateOne(
       { url: flyerUrl },
       {
         $set: {
@@ -318,12 +318,12 @@ async function main() {
   
   // testing only
   // wipe all existing leaflet docs
-  await db.collection('leaflets').deleteMany({});
-  console.log('Cleared leaflets collection.');
+  await db.collection('flyers').deleteMany({});
+  console.log('Cleared flyers collection.');
 
   // Optionally drop legacy index once
   try {
-    await db.collection('leaflets').dropIndex('store_1_validFrom_1');
+    await db.collection('flyers').dropIndex('store_1_validFrom_1');
     console.log('Dropped legacy index');
   } catch (e) {
     // ignore

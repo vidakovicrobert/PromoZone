@@ -1,6 +1,6 @@
 // seed.js
 // Prototype seeder for MongoDB (native driver) using centralized connection helper
-// Collections: countries, chains, stores, categories, leaflets
+// Collections: countries, chains, stores, categories, flyers
 
 import { connectToDatabase } from './db.js';
 
@@ -11,7 +11,7 @@ async function createCollections(db) {
     db.createCollection('chains').catch(() => {}),
     db.createCollection('stores').catch(() => {}),
     db.createCollection('categories').catch(() => {}),
-    db.createCollection('leaflets').catch(() => {}),
+    db.createCollection('flyers').catch(() => {}),
   ]);
 
   // Unique indexes for quick lookup and data integrity
@@ -19,7 +19,7 @@ async function createCollections(db) {
   await db.collection('chains').createIndex({ name: 1 }, { unique: true });
   await db.collection('stores').createIndex({ url: 1 }, { unique: true });
   await db.collection('categories').createIndex({ slug: 1 }, { unique: true });
-  await db.collection('leaflets').createIndex(
+  await db.collection('flyers').createIndex(
     { store: 1, validFrom: 1 },
     { unique: true }
   );
@@ -27,7 +27,7 @@ async function createCollections(db) {
 
 async function seed(db) {
   // Clear existing data (idempotent)
-  const names = ['countries','chains','stores','categories','leaflets'];
+  const names = ['countries','chains','stores','categories','flyers'];
   await Promise.all(names.map(n => db.collection(n).deleteMany({})));
 
   // References for later
@@ -35,7 +35,7 @@ async function seed(db) {
   const chains = db.collection('chains');
   const stores = db.collection('stores');
   const categories = db.collection('categories');
-  const leaflets = db.collection('leaflets');
+  const flyers = db.collection('flyers');
 
   // 1. Seed one country
   const { insertedId: countryId } = await countries.insertOne({
@@ -94,7 +94,7 @@ async function seed(db) {
   const nextMonday = new Date(monday);
   nextMonday.setDate(monday.getDate() + 7);
 
-  await leaflets.insertOne({
+  await flyers.insertOne({
     store: sparStoreId,
     validFrom: monday,
     validTo: nextMonday,

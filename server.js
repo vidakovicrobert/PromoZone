@@ -87,25 +87,25 @@ async function startServer() {
     }
   });
 
-  // Leaflets - Fetch All
-  app.get('/leaflets', async (req, res) => {
+  // Flyers - Fetch All
+  app.get('/flyers', async (req, res) => {
     try {
-      const leaflets = await db.collection('leaflets').find().toArray();
-      res.status(200).json(leaflets);
+      const flyers = await db.collection('flyers').find().toArray();
+      res.status(200).json(flyers);
     } catch (err) {
-      res.status(500).json({ error: 'Failed to fetch leaflets' });
+      res.status(500).json({ error: 'Failed to fetch flyers' });
     }
   });
 
-  // Leaflets - Fetch New (e.g., current week)
-  app.get('/leaflets/new', async (req, res) => {
+  // Flyers - Fetch New (e.g., current week)
+  app.get('/flyers/new', async (req, res) => {
     try {
       const now = new Date();
-      const leafletsCollection = db.collection('leaflets');
-      const newLeaflets = await leafletsCollection.find({ validFrom: { $lte: now }, validTo: { $gte: now } }).toArray();
-      res.status(200).json(newLeaflets);
+      const flyersCollection = db.collection('flyers');
+      const newFlyers = await flyersCollection.find({ validFrom: { $lte: now }, validTo: { $gte: now } }).toArray();
+      res.status(200).json(newFlyers);
     } catch (err) {
-      res.status(500).json({ error: 'Failed to fetch new leaflets' });
+      res.status(500).json({ error: 'Failed to fetch new flyers' });
     }
   });
 
